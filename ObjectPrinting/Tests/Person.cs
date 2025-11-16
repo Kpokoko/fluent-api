@@ -6,15 +6,16 @@ namespace ObjectPrinting.Tests
     {
         public Guid Id { get; set; }
         public string Name { get; set; }
+        public string Surname { get; set; }
         public double Height { get; set; }
         public int Age { get; set; }
-        public TestClass TestClass { get; set; }
+        public Phone Phone { get; set; }
     }
 
-    public class TestClass
+    public class Phone
     {
         public Guid Id { get; set; }
         public string Name { get; set; }
-        public Person Person { get; set; }
+        public Person Owner { get; set; }
     }
 }
