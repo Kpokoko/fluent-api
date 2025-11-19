@@ -7,17 +7,18 @@ namespace ObjectPrinting
 {
     public class PrintingConfig<TOwner>
     {
-        public readonly HashSet<Type> ExcludedTypes;
-        public readonly Dictionary<Type, ISerializer> TypeSerializers;
-        public readonly HashSet<object> SerializedObjects;
-        public readonly Dictionary<Type, CultureInfo> CustomCultureInfos;
-        public readonly Dictionary<string, ISerializer> PropertySerializers;
-        public readonly Dictionary<string, int> MaxStringLength;
-        public readonly HashSet<string> ExcludedProperties;
+        private readonly IReadOnlySet<Type> excludedTypes;
+        private readonly IReadOnlyDictionary<Type, ISerializer> typeSerializers;
+        private readonly IReadOnlySet<object> serializedObjects;
+        private readonly IReadOnlyDictionary<Type, CultureInfo> customCultureInfos;
+        private readonly IReadOnlyDictionary<string, ISerializer> propertySerializers;
+        private readonly IReadOnlyDictionary<string, int> maxStringLength;
+        private readonly IReadOnlySet<string> excludedProperties;
+        
         public PrintingConfig() : this(
             new HashSet<Type>(),
             new Dictionary<Type, ISerializer>(),
-            new (ReferenceEqualityComparer.Instance),
+            new HashSet<object>(ReferenceEqualityComparer.Instance),
             new Dictionary<Type, CultureInfo>(),
             new Dictionary<string, ISerializer>(),
             new Dictionary<string, int>(),
@@ -25,99 +26,99 @@ namespace ObjectPrinting
         {}
 
         private PrintingConfig(
-            HashSet<Type> excludedTypes,
-            Dictionary<Type, ISerializer> typeSerializers,
-            HashSet<object> serializedObjects,
-            Dictionary<Type, CultureInfo> customCultureInfos,
-            Dictionary<string, ISerializer> propertySerializers,
-            Dictionary<string, int> maxStringLength,
-            HashSet<string> excludedProperties)
+            IReadOnlySet<Type> excludedTypes,
+            IReadOnlyDictionary<Type, ISerializer> typeSerializers,
+            IReadOnlySet<object> serializedObjects,
+            IReadOnlyDictionary<Type, CultureInfo> customCultureInfos,
+            IReadOnlyDictionary<string, ISerializer> propertySerializers,
+            IReadOnlyDictionary<string, int> maxStringLength,
+            IReadOnlySet<string> excludedProperties)
         {
-            this.ExcludedTypes = excludedTypes;
-            this.TypeSerializers = typeSerializers;
-            this.SerializedObjects = serializedObjects;
-            this.CustomCultureInfos = customCultureInfos;
-            this.PropertySerializers = propertySerializers;
-            this.MaxStringLength = maxStringLength;
-            this.ExcludedProperties = excludedProperties;
+            this.excludedTypes = excludedTypes;
+            this.typeSerializers = typeSerializers;
+            this.serializedObjects = serializedObjects;
+            this.customCultureInfos = customCultureInfos;
+            this.propertySerializers = propertySerializers;
+            this.maxStringLength = maxStringLength;
+            this.excludedProperties = excludedProperties;
         }
 
         public PrintingConfig<TOwner> ExcludePropertyOfType<T>()
         {
-            var tempSet = new HashSet<Type>(ExcludedTypes);
+            var tempSet = new HashSet<Type>(excludedTypes);
             tempSet.Add(typeof(T));
             return new PrintingConfig<TOwner>(tempSet,
-                TypeSerializers,
-                SerializedObjects,
-                CustomCultureInfos,
-                PropertySerializers,
-                MaxStringLength,
-                ExcludedProperties);
+                typeSerializers,
+                serializedObjects,
+                customCultureInfos,
+                propertySerializers,
+                maxStringLength,
+                excludedProperties);
         }
 
         public PrintingConfig<TOwner> WithTypeSerializtionType<T>(ISerializer serializer)
         {
-            var tempDict = new Dictionary<Type, ISerializer>(TypeSerializers);
+            var tempDict = new Dictionary<Type, ISerializer>(typeSerializers);
             tempDict.Add(typeof(T), serializer);
-            return new PrintingConfig<TOwner>(ExcludedTypes,
+            return new PrintingConfig<TOwner>(excludedTypes,
                 tempDict,
-                SerializedObjects,
-                CustomCultureInfos,
-                PropertySerializers,
-                MaxStringLength,
-                ExcludedProperties);
+                serializedObjects,
+                customCultureInfos,
+                propertySerializers,
+                maxStringLength,
+                excludedProperties);
         }
 
         public PrintingConfig<TOwner> SetTypeCulture<T>(CultureInfo cultureInfo)
             where T : IFormattable
         {
-            var tempDict = new Dictionary<Type, CultureInfo>(CustomCultureInfos);
+            var tempDict = new Dictionary<Type, CultureInfo>(customCultureInfos);
             tempDict.Add(typeof(T), cultureInfo);
-            return new PrintingConfig<TOwner>(ExcludedTypes,
-                TypeSerializers,
-                SerializedObjects,
+            return new PrintingConfig<TOwner>(excludedTypes,
+                typeSerializers,
+                serializedObjects,
                 tempDict,
-                PropertySerializers,
-                MaxStringLength,
-                ExcludedProperties);
+                propertySerializers,
+                maxStringLength,
+                excludedProperties);
         }
 
         public PrintingConfig<TOwner> WithPropertySerialization(string propertyName, ISerializer serializer)
         {
-            var tempDict = new Dictionary<string, ISerializer>(PropertySerializers);
+            var tempDict = new Dictionary<string, ISerializer>(propertySerializers);
             tempDict.Add(propertyName, serializer);
-            return new PrintingConfig<TOwner>(ExcludedTypes,
-                TypeSerializers,
-                SerializedObjects,
-                CustomCultureInfos,
+            return new PrintingConfig<TOwner>(excludedTypes,
+                typeSerializers,
+                serializedObjects,
+                customCultureInfos,
                 tempDict,
-                MaxStringLength,
-                ExcludedProperties);
+                maxStringLength,
+                excludedProperties);
         }
 
         public PrintingConfig<TOwner> TrimStringToLength(string propertyName, int length)
         {
-            var tempDict = new Dictionary<string, int>(MaxStringLength);
+            var tempDict = new Dictionary<string, int>(maxStringLength);
             tempDict.Add(propertyName, length);
-            return new PrintingConfig<TOwner>(ExcludedTypes,
-                TypeSerializers,
-                SerializedObjects,
-                CustomCultureInfos,
-                PropertySerializers,
+            return new PrintingConfig<TOwner>(excludedTypes,
+                typeSerializers,
+                serializedObjects,
+                customCultureInfos,
+                propertySerializers,
                 tempDict,
-                ExcludedProperties);
+                excludedProperties);
         }
 
         public PrintingConfig<TOwner> Exclude(string propertyName)
         {
-            var tempSet = new HashSet<string>(ExcludedProperties);
+            var tempSet = new HashSet<string>(excludedProperties);
             tempSet.Add(propertyName);
-            return new PrintingConfig<TOwner>(ExcludedTypes,
-                TypeSerializers,
-                SerializedObjects,
-                CustomCultureInfos,
-                PropertySerializers,
-                MaxStringLength,
+            return new PrintingConfig<TOwner>(excludedTypes,
+                typeSerializers,
+                serializedObjects,
+                customCultureInfos,
+                propertySerializers,
+                maxStringLength,
                 tempSet);
         }
 
@@ -150,17 +151,17 @@ namespace ObjectPrinting
 
         public ISerializer GetSerializerForType(Type type)
         {
-            if (TypeSerializers.ContainsKey(type))
-                return TypeSerializers[type];
+            if (typeSerializers.ContainsKey(type))
+                return typeSerializers[type];
             return new Serializer();
         }
         
         public bool IsPropertyNeedsUniqueSerialization(string propertyName, out ISerializer serializer)
         {
             serializer = null;
-            if (PropertySerializers.ContainsKey(propertyName))
+            if (propertySerializers.ContainsKey(propertyName))
             {
-                serializer = PropertySerializers[propertyName];
+                serializer = propertySerializers[propertyName];
                 return true;
             }
             return false;
@@ -169,9 +170,9 @@ namespace ObjectPrinting
         public bool IsPropertyNeedsTrim(string propertyName, out int trimLength)
         {
             trimLength = 0;
-            if (MaxStringLength.ContainsKey(propertyName))
+            if (maxStringLength.ContainsKey(propertyName))
             {
-                trimLength = MaxStringLength[propertyName];
+                trimLength = maxStringLength[propertyName];
                 return true;
             }
             return false;
