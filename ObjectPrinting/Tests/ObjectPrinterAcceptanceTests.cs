@@ -18,15 +18,16 @@ namespace ObjectPrinting.Tests
                 //1. Исключить из сериализации свойства определенного типа
                 .ExcludePropertyOfType<int>()
                 //2. Указать альтернативный способ сериализации для определенного типа
-                .WithTypeSerializtionType<Phone>(new PhoneSerializer())
+                .WithTypeSerializationStyle<Phone>(new Serializer((obj, nestingLevel, deepnessLevel) => "MyPhone" + Environment.NewLine))
                 //3. Для числовых типов указать культуру
                 .SetTypeCulture<double>(CultureInfo.InvariantCulture)
                 //4. Настроить сериализацию конкретного свойства
-                .GetProperty(x => x.Name).SetSerializationType(new NameSerializer())
+                .GetPropertyByName(x => x.Name)
+                    .SetSerializationStyle(new Serializer((obj, nestingLevel, deepnessLevel) => "MyName" + Environment.NewLine))
                 //5. Настроить обрезание строковых свойств (метод должен быть виден только для строковых свойств)
-                .GetProperty(x => x.Surname).TrimStringToLength(3)
+                .GetPropertyByName(x => x.Surname).TrimStringToLength(3)
                 //6. Исключить из сериализации конкретное свойства
-                .GetProperty(x => x.Id).Exclude();
+                .GetPropertyByName(x => x.Id).Exclude();
             
             string s1 = printer.PrintToString(person);
             Console.WriteLine(s1);
@@ -35,14 +36,13 @@ namespace ObjectPrinting.Tests
             var s2 = person.PrintToString();
             Console.WriteLine("\n\n\n" + s2);
             //8. ...с конфигурированием
-            var s3 = person.PrintToString(x => x.ExcludePropertyOfType<string>());
+            var s3 = person.PrintToString(x => x.GetPropertyByName(p => p.Name).TrimStringToLength(3));
             Console.WriteLine("\n\n\n" + s3);
         }
 
         [Test]
-        public void ExcludeTypeTest()
+        public void ExcludeType_ShouldRemove_PropertiesWithThisType()
         {
-            var expected = "Person\r\n\tName = Alex\r\n\tSurname = Smith\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
@@ -50,90 +50,147 @@ namespace ObjectPrinting.Tests
                 .ExcludePropertyOfType<double>()
                 .ExcludePropertyOfType<int>()
                 .ExcludePropertyOfType<Phone>();
+
+            var expected =
+                "Person\r\n" +
+                "\tName = Alex\r\n" +
+                "\tSurname = Smith\r\n";
+            
             var ans = printer.PrintToString(person);
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void UniqueTypeSerializationTest()
+        public void WithTypeSerializationStyle_ShouldSetUniqueSerializationStyle_ToPropertiesWithThisType()
         {
-            var expected = "Person\r\n\tId = 999999999\r\n\tName = Alex\r\n\tSurname = Smith\r\n\tHeight = 180,5\r\n\tAge = 19\r\n\tPhone = my phone\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             person.Phone = new Phone {Name = "Смартфон Vivo"};
             var printer = ObjectPrinter
                 .For<Person>()
-                .WithTypeSerializtionType<Guid>(new GuidSerializer())
-                .WithTypeSerializtionType<Phone>(new PhoneSerializer());
+                .WithTypeSerializationStyle<Guid>(new Serializer((obj, nestingLevel, deepnessLevel) => "999999999" + Environment.NewLine))
+                .WithTypeSerializationStyle<Phone>(new Serializer((obj, nestingLevel, deepnessLevel) => "My phone" + Environment.NewLine));
             var ans = printer.PrintToString(person);
+            
+            var expected =
+                "Person\r\n\t" +
+                "Id = 999999999\r\n\t" +
+                "Name = Alex\r\n\t" +
+                "Surname = Smith\r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Age = 19\r\n\t" +
+                "Phone = My phone\r\n";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void UniqueTypeCultureTest()
+        public void SetTypeCulture_ShouldSetTypeCulture_ToPropertiesWithThisType()
         {
-            var expected = "Person\r\n\tId = Guid\r\n\tName = Alex\r\n\tSurname = Smith\r\n\tHeight = 180,5\r\n\tAge = 19\r\n\tPhone = null\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
                 .SetTypeCulture<double>(CultureInfo.CurrentCulture);
             var ans = printer.PrintToString(person);
+            
+            var baseGuid = Guid.Empty.ToString();
+            var expected =
+                "Person\r\n\t" +
+                $"Id = {baseGuid}\r\n\t" +
+                "Name = Alex\r\n\t" +
+                "Surname = Smith\r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Age = 19\r\n\t" +
+                "Phone = null\r\n";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void GetPropertyTest()
+        public void GetPropertyByName_ShouldReturn_PropertyInfoByName()
         {
-            var expected = "Id";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
-                .GetProperty(x => x.Id);
+                .GetPropertyByName(x => x.Id);
             var ans = printer.PropertyName;
+            
+            var expected = "Id";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void SetPropertySerializationType()
+        public void SetSerializationStyle_ShouldSetUniqueSerializationStyle_ToGotProperty()
         {
-            var expected = "Person\r\n\tId = Guid\r\n\tName = my name\r\n\tSurname = Smith\r\n\tHeight = 180,5\r\n\tAge = 19\r\n\tPhone = null\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
-                .GetProperty(x => x.Name).SetSerializationType(new NameSerializer());
+                .GetPropertyByName(x => x.Name).SetSerializationStyle(new Serializer((obj, nestingLevel, deepnessLevel) => "My name" + Environment.NewLine));
             var ans = printer.PrintToString(person);
+            
+            var baseGuid = Guid.Empty.ToString();
+            var expected =
+                "Person\r\n\t" +
+                $"Id = {baseGuid}\r\n\t" +
+                "Name = My name\r\n\t" +
+                "Surname = Smith\r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Age = 19\r\n\t" +
+                "Phone = null\r\n";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void SetPropertyTrimTest()
+        public void TrimStringToLength_ShouldTrimPropertyLength_ToGotProperty()
         {
-            var expected = "Person\r\n\tId = Guid\r\n\tName = Alex\r\n\tSurname = Very \r\n\tHeight = 180,5\r\n\tAge = 19\r\n\tPhone = null\r\n";
             var person = new Person {Name = "Alex", Surname = "Very long surname", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
-                .GetProperty(x => x.Surname).TrimStringToLength(5);
+                .GetPropertyByName(x => x.Surname).TrimStringToLength(5);
             var ans = printer.PrintToString(person);
+            
+            var baseGuid = Guid.Empty.ToString();
+            var expected =
+                "Person\r\n\t" +
+                $"Id = {baseGuid}\r\n\t" +
+                "Name = Alex\r\n\t" +
+                "Surname = Very \r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Age = 19\r\n\t" +
+                "Phone = null\r\n";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
-        public void ExcludePropertyTest()
+        public void Exclude_ShouldRemove_GotProperty()
         {
-            var expected = "Person\r\n\tId = Guid\r\n\tName = Alex\r\n\tSurname = Smith\r\n\tHeight = 180,5\r\n\tAge = 19\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var printer = ObjectPrinter
                 .For<Person>()
-                .GetProperty(x => x.Phone).Exclude();
+                .GetPropertyByName(x => x.Phone).Exclude();
             var ans = printer.PrintToString(person);
+            
+            var baseGuid = Guid.Empty.ToString();
+            var expected =
+                "Person\r\n\t" +
+                $"Id = {baseGuid}\r\n\t" +
+                "Name = Alex\r\n\t" +
+                "Surname = Smith\r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Age = 19\r\n";
+            
             ans.Should().Be(expected);
         }
 
         [Test]
         public void LoopReferencesTest()
         {
-            var expected = "Person\r\n\tId = Guid\r\n\tName = Alex\r\n\tSurname = Smith\r\n\tHeight = 180,5" +
-                           "\r\n\tAge = 19\r\n\tPhone = Phone\r\n\t\tId = Guid\r\n\t\t" +
-                           "Name = My phone\r\n\t\tOwner = Already serialized!\r\n";
+            var baseGuid = Guid.Empty.ToString();
+            var expected = $"Person\r\n\tId = {baseGuid}\r\n\tName = Alex\r\n\tSurname = Smith\r\n\tHeight = 180,5" +
+                           $"\r\n\tAge = 19\r\n\tPhone = Phone\r\n\t\tId = {baseGuid}\r\n\t\t" +
+                           "Name = My phone\r\n\t\tOwner = Deepness exceeded!\r\n";
             var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             var phone = new Phone {Name = "My phone", Owner = person};
             person.Phone = phone;
