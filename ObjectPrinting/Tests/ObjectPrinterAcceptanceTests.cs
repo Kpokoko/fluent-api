@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using FluentAssertions;
 using NUnit.Framework;
 
@@ -201,14 +203,56 @@ namespace ObjectPrinting.Tests
         }
 
         [Test]
-        public void ArraySerializationTest()
+        public void Array_ShouldBeSerializedAs_JSON()
         {
             var array = new int[]{1, 2, 3};
-            var expected = array.ToString();
             var printer = ObjectPrinter
                 .For<int[]>();
             var ans = printer.PrintToString(array);
-            ans.Should().Be(expected);
+
+            var expected = new StringBuilder();
+            expected.Append("Int32[]\r\n");
+            foreach(var i in array)
+                expected.Append("\t" + i.ToString() + "\r\n");
+            
+            ans.Should().Be(expected.ToString());
+        }
+
+        [Test]
+        public void List_ShouldBeSerializedAs_JSON()
+        {
+            var list = new List<int> {1, 2, 3};
+            var printer = ObjectPrinter
+                .For<List<int>>();
+            var ans = printer.PrintToString(list);
+
+            var expected = new StringBuilder();
+            expected.Append("List`1\r\n");
+            foreach(var i in list)
+                expected.Append("\t" + i.ToString() + "\r\n");
+            
+            ans.Should().Be(expected.ToString());
+        }
+
+        [Test]
+        public void Dictionary_ShouldBeSerializedAs_JSON()
+        {
+            var dict = new Dictionary<int, string>
+            {
+                {1, "one"},
+                {2, "two"},
+                {3, "three"}
+            };
+            var printer = ObjectPrinter
+                .For<Dictionary<int, string>>();
+            var ans = printer.PrintToString(dict);
+
+            var expected = new StringBuilder();
+            expected.Append("Dictionary`2\r\n");
+            foreach(var i in dict)
+                expected.Append("\t" + i.Key + " = " + i.Value + "\r\n");
+            
+            ans.Should().Be(expected.ToString());
         }
     }
 }

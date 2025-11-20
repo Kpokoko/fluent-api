@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -21,8 +22,9 @@ namespace ObjectPrinting
         private const char Tabchar = '\t';
         private const char ResetCaretChar = '\r';
         private const char NewLineChar = '\n';
-        private readonly string environmentNewLine = Environment.NewLine;
+        private static readonly string EnvironmentNewLine = Environment.NewLine;
         private const string EqualityWithSpaces = " = ";
+        private readonly string deepnessExceededString = $"Deepness exceeded!{EnvironmentNewLine}";
 
         private static HashSet<Type> _finalTypes =
         [
@@ -161,7 +163,7 @@ namespace ObjectPrinting
         {
             //TODO apply configurations
             if (obj is null)
-                return "null" + environmentNewLine;
+                return "null" + EnvironmentNewLine;
 
             var type = obj.GetType();
             return GetSerializerForType(type).SerializerFunc.Invoke(obj, nestingLevel, 0);
@@ -170,9 +172,9 @@ namespace ObjectPrinting
         private string Serialize(object? obj, int nestingLevel, int deepnessLevel)
         {
             if (obj is null)
-                return "null" + environmentNewLine;
+                return "null" + EnvironmentNewLine;
             var type = obj.GetType();
-            if (TrySerializeAsBaseFields(obj, type, out var serialized) && serialized is not null)
+            if (TrySerializeAsBaseFields(obj, type, nestingLevel, out var serialized) && serialized is not null)
                 return serialized;
 
             var sb = new StringBuilder();
@@ -180,18 +182,17 @@ namespace ObjectPrinting
             return sb.ToString();
         }
 
-        private bool TrySerializeAsBaseFields(object obj, Type type, out string? result)
+        private bool TrySerializeAsBaseFields(object obj, Type type, int nestingLevel, out string? result)
         {
             result = null;
             if (customCultureInfos.TryGetValue(type, out var info))
             {
-                result = obj.ToString();
-                result = (obj as IFormattable)?.ToString(null, info) + environmentNewLine;
+                result = (obj as IFormattable)?.ToString(null, info) + EnvironmentNewLine;
                 return true;
             }
             if (_finalTypes.Contains(type))
             {
-                result = obj.ToString() + environmentNewLine;
+                result = obj.ToString() + EnvironmentNewLine;
                 return true;
             }
             return false;
@@ -201,16 +202,56 @@ namespace ObjectPrinting
         {
             var sb = new StringBuilder();
             sb.AppendLine(type.Name);
+            if (obj is IEnumerable enumerable && type != typeof(string))
+            {
+                return SerializeCollection(enumerable, nestingLevel, deepnessLevel);
+            }
             var properties = type.GetProperties()
                 .Where(x => !excludedTypes.Contains(x.PropertyType)
                             && !excludedProperties.Contains(x.Name));
             foreach (var propertyInfo in properties)
             {
-                if (deepnessLevel == MaxDeepnessLevel)
-                    return $"Deepness exceeded!" + environmentNewLine;
+                if (IsDeepnessOverflow(deepnessLevel))
+                    return deepnessExceededString;
                 sb.Append(SerializeProperty(propertyInfo, obj, nestingLevel, deepnessLevel));
             }
             return sb.ToString();
+        }
+
+        private string SerializeCollection(IEnumerable enumerable, int nestingLevel, int deepnessLevel)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(enumerable.GetType().Name);
+            sb.Append(new string(Tabchar, nestingLevel + 1));
+            foreach (var obj in enumerable)
+            {
+                var objType = obj.GetType();
+                var isKeyValuePair = objType.IsGenericType
+                                     && objType.GetGenericTypeDefinition() == typeof(KeyValuePair<,>);
+                if (isKeyValuePair)
+                    sb.Append(SerializeDictionaryElement(obj, deepnessLevel + 1));
+                else
+                    sb.Append(GetSerializerForType(obj.GetType()).SerializerFunc
+                        .Invoke(obj, nestingLevel + 1, deepnessLevel + 1));
+                sb.Append(new string(Tabchar, nestingLevel + 1));
+            }
+            sb.Remove(sb.Length - 1, 1);
+            return sb.ToString();
+        }
+
+        private string SerializeDictionaryElement(object obj, int deepnessLevel)
+        {
+            if (IsDeepnessOverflow(deepnessLevel))
+                return deepnessExceededString;
+            var type = obj.GetType();
+            var key = type.GetProperty("Key")!.GetValue(obj);
+            var value = type.GetProperty("Value")!.GetValue(obj);
+            return new string(key + " = " + value + EnvironmentNewLine);
+        }
+
+        private bool IsDeepnessOverflow(int deepnessLevel)
+        {
+            return deepnessLevel >= MaxDeepnessLevel;
         }
 
         private string SerializeProperty(PropertyInfo propertyInfo, object obj, int nestingLevel, int deepnessLevel)
@@ -227,7 +268,7 @@ namespace ObjectPrinting
                 var serializedInfo = BuildSerializedField(propertyInfo, null, obj, nestingLevel, deepnessLevel);
                 var dataPrefixLength = identation.Length + propertyInfo.Name.Length + EqualityWithSpaces.Length;
                 serializedInfo = serializedInfo.Substring(0, dataPrefixLength + trimLen)
-                    .TrimEnd(new char[] {ResetCaretChar, NewLineChar, Tabchar});
+                    .TrimEnd(ResetCaretChar, NewLineChar, Tabchar);
                 
                 sb.Append(serializedInfo + ResetCaretChar + NewLineChar);
                 return sb.ToString();
