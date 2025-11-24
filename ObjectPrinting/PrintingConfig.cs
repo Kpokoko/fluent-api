@@ -11,14 +11,14 @@ namespace ObjectPrinting
 {
     public class PrintingConfig<TOwner>
     {
+        public delegate string SerializerDelegate(object? obj, int identationLevel, int depthLevel);
         private readonly IReadOnlySet<Type> excludedTypes;
-        private readonly IReadOnlyDictionary<Type, Serializer> typeSerializers;
-        private readonly HashSet<object> serializedObjects;
+        private readonly IReadOnlyDictionary<Type, SerializerDelegate> typeSerializers;
         private readonly IReadOnlyDictionary<Type, CultureInfo> customCultureInfos;
-        private readonly IReadOnlyDictionary<string, Serializer> propertySerializers;
+        private readonly IReadOnlyDictionary<string, SerializerDelegate> propertySerializers;
         private readonly IReadOnlyDictionary<string, int> maxStringLength;
         private readonly IReadOnlySet<string> excludedProperties;
-        private const int MaxDeepnessLevel = 2;
+        private const int MaxDeepnessLevel = 3;
         private const char Tabchar = '\t';
         private const char ResetCaretChar = '\r';
         private const char NewLineChar = '\n';
@@ -36,26 +36,23 @@ namespace ObjectPrinting
         
         public PrintingConfig() : this(
             new HashSet<Type>(),
-            new Dictionary<Type, Serializer>(),
-            new HashSet<object>(ReferenceEqualityComparer.Instance),
+            new Dictionary<Type, SerializerDelegate>(),
             new Dictionary<Type, CultureInfo>(),
-            new Dictionary<string, Serializer>(),
+            new Dictionary<string, SerializerDelegate>(),
             new Dictionary<string, int>(),
             new HashSet<string>())
         {}
 
         private PrintingConfig(
             IReadOnlySet<Type> excludedTypes,
-            IReadOnlyDictionary<Type, Serializer> typeSerializers,
-            HashSet<object> serializedObjects,
+            IReadOnlyDictionary<Type, SerializerDelegate> typeSerializers,
             IReadOnlyDictionary<Type, CultureInfo> customCultureInfos,
-            IReadOnlyDictionary<string, Serializer> propertySerializers,
+            IReadOnlyDictionary<string, SerializerDelegate> propertySerializers,
             IReadOnlyDictionary<string, int> maxStringLength,
             IReadOnlySet<string> excludedProperties)
         {
             this.excludedTypes = excludedTypes;
             this.typeSerializers = typeSerializers;
-            this.serializedObjects = serializedObjects;
             this.customCultureInfos = customCultureInfos;
             this.propertySerializers = propertySerializers;
             this.maxStringLength = maxStringLength;
@@ -65,25 +62,24 @@ namespace ObjectPrinting
         public PrintingConfig<TOwner> ExcludePropertyOfType<T>()
         {
             if (excludedTypes.Contains(typeof(T)))
-                throw new InvalidOperationException($"The type {typeof(T)} is already excluded.");
+                return this;
             var tempSet = new HashSet<Type>(excludedTypes) { typeof(T) };
             return new PrintingConfig<TOwner>(tempSet,
                 typeSerializers,
-                serializedObjects,
                 customCultureInfos,
                 propertySerializers,
                 maxStringLength,
                 excludedProperties);
         }
 
-        public PrintingConfig<TOwner> WithTypeSerializationStyle<T>(Serializer serializer)
+        public PrintingConfig<TOwner> WithTypeSerializationStyle<T>(SerializerDelegate serializer)
         {
-            var tempDict = new Dictionary<Type, Serializer>(typeSerializers);
-            if (!tempDict.TryAdd(typeof(T), serializer))
-                throw new InvalidOperationException($"Type {typeof(T).FullName} has already been set serialization type");
+            var tempDict = new Dictionary<Type, SerializerDelegate>(typeSerializers)
+            {
+                [typeof(T)] = serializer
+            };
             return new PrintingConfig<TOwner>(excludedTypes,
                 tempDict,
-                serializedObjects,
                 customCultureInfos,
                 propertySerializers,
                 maxStringLength,
@@ -93,26 +89,26 @@ namespace ObjectPrinting
         public PrintingConfig<TOwner> SetTypeCulture<T>(CultureInfo cultureInfo)
             where T : IFormattable
         {
-            var tempDict = new Dictionary<Type, CultureInfo>(customCultureInfos);
-            if (!tempDict.TryAdd(typeof(T), cultureInfo))
-                throw new InvalidOperationException($"Type {typeof(T).FullName} has already been set culture info");
+            var tempDict = new Dictionary<Type, CultureInfo>(customCultureInfos)
+            {
+                [typeof(T)] = cultureInfo
+            };
             return new PrintingConfig<TOwner>(excludedTypes,
                 typeSerializers,
-                serializedObjects,
                 tempDict,
                 propertySerializers,
                 maxStringLength,
                 excludedProperties);
         }
 
-        public PrintingConfig<TOwner> WithPropertySerialization(string propertyName, Serializer serializer)
+        public PrintingConfig<TOwner> WithPropertySerialization(string propertyName, SerializerDelegate serializer)
         {
-            var tempDict = new Dictionary<string, Serializer>(propertySerializers);
-            if (!tempDict.TryAdd(propertyName, serializer))
-                throw new InvalidOperationException($"Property {propertyName} has already been set serialization type");
+            var tempDict = new Dictionary<string, SerializerDelegate>(propertySerializers)
+            {
+                [propertyName] = serializer
+            };
             return new PrintingConfig<TOwner>(excludedTypes,
                 typeSerializers,
-                serializedObjects,
                 customCultureInfos,
                 tempDict,
                 maxStringLength,
@@ -121,13 +117,14 @@ namespace ObjectPrinting
 
         public PrintingConfig<TOwner> TrimStringToLength(Expression<Func<TOwner, string>> propertyExpr, int length)
         {
-            var member = (MemberExpression)propertyExpr.Body;
-            var tempDict = new Dictionary<string, int>(maxStringLength);
-            if (!tempDict.TryAdd(member.Member.Name, length))
-                throw new InvalidOperationException($"Property {member.Member.Name} has already been trim length");
+            if (propertyExpr.Body is not MemberExpression member)
+                throw new ArgumentException("Expression must select a property");
+            var tempDict = new Dictionary<string, int>(maxStringLength)
+            {
+                [member.Member.Name] = length
+            };
             return new PrintingConfig<TOwner>(excludedTypes,
                 typeSerializers,
-                serializedObjects,
                 customCultureInfos,
                 propertySerializers,
                 tempDict,
@@ -136,12 +133,11 @@ namespace ObjectPrinting
 
         public PrintingConfig<TOwner> Exclude(string propertyName)
         {
-            var tempSet = new HashSet<string>(excludedProperties);
-            if (!tempSet.Add(propertyName))
-                throw new InvalidOperationException($"Property {propertyName} has already been excluded");
+            if (excludedProperties.Contains(propertyName))
+                return this;
+            var tempSet = new HashSet<string>(excludedProperties) { propertyName };
             return new PrintingConfig<TOwner>(excludedTypes,
                 typeSerializers,
-                serializedObjects,
                 customCultureInfos,
                 propertySerializers,
                 maxStringLength,
@@ -166,7 +162,7 @@ namespace ObjectPrinting
                 return "null" + EnvironmentNewLine;
 
             var type = obj.GetType();
-            return GetSerializerForType(type).SerializerFunc.Invoke(obj, nestingLevel, 0);
+            return GetSerializerForType(type).Invoke(obj, nestingLevel, 0);
         }
         
         private string Serialize(object? obj, int nestingLevel, int deepnessLevel)
@@ -206,16 +202,54 @@ namespace ObjectPrinting
             {
                 return SerializeCollection(enumerable, nestingLevel, deepnessLevel);
             }
-            var properties = type.GetProperties()
-                .Where(x => !excludedTypes.Contains(x.PropertyType)
+            var objectInfo = type.GetMembers(BindingFlags.Instance
+                                             | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(x => x.MemberType is MemberTypes.Field or MemberTypes.Property)
+                .Where(x => !IsBackingField(x) && !IsShadowingProperty(x, type))
+                .Where(x => !excludedTypes.Contains(ToMemberType(x))
                             && !excludedProperties.Contains(x.Name));
-            foreach (var propertyInfo in properties)
+            foreach (var propertyInfo in objectInfo)
             {
                 if (IsDeepnessOverflow(deepnessLevel))
                     return deepnessExceededString;
-                sb.Append(SerializeProperty(propertyInfo, obj, nestingLevel, deepnessLevel));
+                sb.Append(SerializePropertyOrField(propertyInfo, obj, nestingLevel, deepnessLevel));
             }
             return sb.ToString();
+        }
+
+        private Type ToMemberType(MemberInfo member)
+        {
+            if (member is PropertyInfo propertyInfo)
+                return propertyInfo.PropertyType;
+            if (member is FieldInfo fieldInfo)
+                return fieldInfo.FieldType;
+            throw new ArgumentException($"{member.GetType().Name} is not a property or field");
+        }
+
+        private object? GetMemberValue(MemberInfo member, object? obj)
+        {
+            if (member is PropertyInfo propertyInfo)
+                return propertyInfo.GetValue(obj);
+            if (member is FieldInfo fieldInfo)
+                return fieldInfo.GetValue(obj);
+            throw new ArgumentException($"{member.GetType().Name} is not a property or field");
+        }
+
+        private bool IsBackingField(MemberInfo member)
+        {
+            return member.Name.Contains("k__BackingField");
+        }
+
+        private bool IsShadowingProperty(MemberInfo member, Type parent)
+        {
+            if (member is not FieldInfo field)
+                return false;
+            var memberName = member.Name.ToLower().TrimStart('_');
+            var shadowedField = parent.GetProperty(memberName,  BindingFlags.Instance |
+                                                                BindingFlags.Public |
+                                                                BindingFlags.NonPublic |
+                                                                BindingFlags.IgnoreCase);
+            return shadowedField is not null;
         }
 
         private string SerializeCollection(IEnumerable enumerable, int nestingLevel, int deepnessLevel)
@@ -231,7 +265,7 @@ namespace ObjectPrinting
                 if (isKeyValuePair)
                     sb.Append(SerializeDictionaryElement(obj, deepnessLevel + 1));
                 else
-                    sb.Append(GetSerializerForType(obj.GetType()).SerializerFunc
+                    sb.Append(GetSerializerForType(obj.GetType())
                         .Invoke(obj, nestingLevel + 1, deepnessLevel + 1));
                 sb.Append(new string(Tabchar, nestingLevel + 1));
             }
@@ -254,49 +288,55 @@ namespace ObjectPrinting
             return deepnessLevel >= MaxDeepnessLevel;
         }
 
-        private string SerializeProperty(PropertyInfo propertyInfo, object obj, int nestingLevel, int deepnessLevel)
+        private string SerializePropertyOrField(MemberInfo memberInfo, object obj, int nestingLevel, int deepnessLevel)
         {
             var sb = new StringBuilder();
-            if (IsPropertyNeedsUniqueSerialization(propertyInfo.Name, out var serializer))
+            if (IsPropertyNeedsUniqueSerialization(memberInfo.Name, out var serializer))
             {
-                sb.Append(BuildSerializedField(propertyInfo, serializer, obj, nestingLevel, deepnessLevel));
+                var newData = BuildSerializedField(memberInfo, serializer, obj, nestingLevel, deepnessLevel)
+                    .TrimEnd(ResetCaretChar, NewLineChar, Tabchar);
+                sb.Append(newData + EnvironmentNewLine);
                 return sb.ToString();
             }
-            if (IsPropertyNeedsTrim(propertyInfo.Name, out var trimLen))
+            if (IsPropertyNeedsTrim(memberInfo.Name, out var trimLen))
             {
                 var identation = new string(Tabchar, nestingLevel + 1);
-                var serializedInfo = BuildSerializedField(propertyInfo, null, obj, nestingLevel, deepnessLevel);
-                var dataPrefixLength = identation.Length + propertyInfo.Name.Length + EqualityWithSpaces.Length;
+                var serializedInfo = BuildSerializedField(memberInfo, null, obj, nestingLevel, deepnessLevel);
+                var dataPrefixLength = identation.Length + memberInfo.Name.Length + EqualityWithSpaces.Length;
                 serializedInfo = serializedInfo.Substring(0, dataPrefixLength + trimLen)
                     .TrimEnd(ResetCaretChar, NewLineChar, Tabchar);
                 
-                sb.Append(serializedInfo + ResetCaretChar + NewLineChar);
+                sb.Append(serializedInfo + EnvironmentNewLine);
                 return sb.ToString();
             }
-            sb.Append(BuildSerializedField(propertyInfo, null, obj, nestingLevel, deepnessLevel));
+            sb.Append(BuildSerializedField(memberInfo, null, obj, nestingLevel, deepnessLevel));
             return sb.ToString();
         }
 
-        private string BuildSerializedField(PropertyInfo propertyInfo, Serializer? serializer,
+        private string BuildSerializedField(MemberInfo memberInfo, SerializerDelegate? serializer,
             object? obj, int nestingLevel, int deepnessLevel)
         {
+            var memberValue = GetMemberValue(memberInfo, obj);
+            if (memberValue is null)
+                return string.Empty;
             var identation = new string(Tabchar, nestingLevel + 1);
             var sb = new StringBuilder();
-            sb.Append(identation + propertyInfo.Name + EqualityWithSpaces);
+            sb.Append(identation + memberInfo.Name + EqualityWithSpaces);
             if (serializer is null)
-                serializer = GetSerializerForType(propertyInfo.PropertyType);
-            sb.Append(serializer.SerializerFunc.Invoke(propertyInfo.GetValue(obj), nestingLevel + 1, deepnessLevel + 1));
+                serializer = GetSerializerForType(memberValue.GetType());
+            sb.Append(serializer.Invoke(GetMemberValue(memberInfo, obj), nestingLevel + 1, deepnessLevel + 1));
             return sb.ToString();
         }
 
-        private Serializer GetSerializerForType(Type type)
+        private SerializerDelegate GetSerializerForType(Type type)
         {
             if (typeSerializers.TryGetValue(type, out var forType))
                 return forType;
-            return new Serializer(Serialize);
+            return Serialize;
         }
         
-        private bool IsPropertyNeedsUniqueSerialization(string propertyName, out Serializer? serializer)
+        private bool IsPropertyNeedsUniqueSerialization(string propertyName,
+            out SerializerDelegate? serializer)
         {
             serializer = null;
             if (propertySerializers.TryGetValue(propertyName, out var propertySerializer))

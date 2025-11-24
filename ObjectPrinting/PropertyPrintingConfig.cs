@@ -6,25 +6,35 @@ namespace ObjectPrinting;
 public class PropertyPrintingConfig<TOwner, TPropType>
 {
     private readonly PrintingConfig<TOwner> config;
-    private readonly Expression<Func<TOwner, TPropType>>? propertySelector;
+    private readonly Expression<Func<TOwner, TPropType>>? selector;
 
-    public PropertyPrintingConfig(PrintingConfig<TOwner> config, Expression<Func<TOwner, TPropType>>? propertySelector)
+    public PropertyPrintingConfig(PrintingConfig<TOwner> config, Expression<Func<TOwner, TPropType>>? selector)
     {
         this.config = config;
-        this.propertySelector = ValidateExpression(propertySelector);
+        this.selector = ValidateExpression(selector);
     }
 
-    private Expression<Func<TOwner, TPropType>> ValidateExpression(Expression<Func<TOwner, TPropType>>? propertySelector)
+    private Expression<Func<TOwner, TPropType>> ValidateExpression(Expression<Func<TOwner, TPropType>>? validatingSelector)
     {
-        if (propertySelector == null)
-            throw new ArgumentNullException(nameof(propertySelector));
-        if (propertySelector.Body is not MemberExpression memberExpression)
-            throw new ArgumentException($"{nameof(propertySelector)} must select property");
-        return propertySelector;
+        if (validatingSelector == null)
+            throw new ArgumentNullException(nameof(validatingSelector));
+        if (validatingSelector.Body is not MemberExpression memberExpression)
+            throw new ArgumentException($"{nameof(validatingSelector)} must select property or field");
+        if (!IsDirectPropertyAccess(memberExpression, validatingSelector.Parameters[0]))
+            throw new ArgumentException("Property selector should only access properties of the parameter, not external variables");
+        return validatingSelector;
     }
     
-    public PrintingConfig<TOwner> ParentConfig => config;
-    public Expression<Func<TOwner, TPropType>>? PropertySelector => propertySelector;
+    private bool IsDirectPropertyAccess(Expression? expression, ParameterExpression parameter)
+    {
+        while (expression is MemberExpression member)
+            expression = member.Expression;
+        return expression == parameter;
+    }
+
     
-    public string PropertyName => ((MemberExpression)propertySelector!.Body).Member.Name;
+    public PrintingConfig<TOwner> ParentConfig => config;
+    public Expression<Func<TOwner, TPropType>>? PropertySelector => selector;
+    
+    public string PropertyName => ((MemberExpression)selector!.Body).Member.Name;
 }

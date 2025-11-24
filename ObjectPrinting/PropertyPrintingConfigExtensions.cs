@@ -1,9 +1,11 @@
+using System;
+
 namespace ObjectPrinting;
 
 public static class PropertyPrintingConfigExtensions
 {
     public static PrintingConfig<TOwner> SetSerializationStyle<TOwner, TPropType>
-        (this PropertyPrintingConfig<TOwner, TPropType> propertyConfig, Serializer serializer)
+        (this PropertyPrintingConfig<TOwner, TPropType> propertyConfig, PrintingConfig<TOwner>.SerializerDelegate serializer)
     {
         var propertyName = propertyConfig.PropertyName;
         return propertyConfig.ParentConfig.WithPropertySerialization(propertyName, serializer);
