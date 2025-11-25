@@ -17,7 +17,7 @@ namespace ObjectPrinting.Tests
             var person = new Person { Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
             person.Phone = new Phone {Name = "Смартфон Vivo", Owner = person};
             PrintingConfig<Person>.SerializerDelegate phoneSerializer
-                = (obj, nestingLevel, deepnessLevel) => "MyPhone" + Environment.NewLine;
+                = (obj, nestingLevel, deepnessLevel, path) => "MyPhone" + Environment.NewLine;
 
             var printer = ObjectPrinter.For<Person>()
                 //1. Исключить из сериализации свойства определенного типа
@@ -28,7 +28,7 @@ namespace ObjectPrinting.Tests
                 .SetTypeCulture<double>(CultureInfo.InvariantCulture)
                 //4. Настроить сериализацию конкретного свойства
                 .GetPropertyByName(x => x.Name) 
-                    .SetSerializationStyle((obj, nestingLevel, deepnessLevel) => "MyName")
+                    .SetSerializationStyle((obj, nestingLevel, deepnessLevel, path) => "MyName")
                 //5. Настроить обрезание строковых свойств (метод должен быть виден только для строковых свойств)
                 .GetPropertyByName(x => x.Surname).TrimStringToLength(3)
                 //6. Исключить из сериализации конкретное свойства
@@ -72,8 +72,8 @@ namespace ObjectPrinting.Tests
             person.Phone = new Phone {Name = "Смартфон Vivo"};
             var printer = ObjectPrinter
                 .For<Person>()
-                .WithTypeSerializationStyle<Guid>((obj, nestingLevel, deepnessLevel) => "999999999" + Environment.NewLine)
-                .WithTypeSerializationStyle<Phone>((obj, nestingLevel, deepnessLevel) => "My phone" + Environment.NewLine);
+                .WithTypeSerializationStyle<Guid>((obj, nestingLevel, deepnessLevel, path) => "999999999" + Environment.NewLine)
+                .WithTypeSerializationStyle<Phone>((obj, nestingLevel, deepnessLevel, path) => "My phone" + Environment.NewLine);
             var ans = printer.PrintToString(person);
             
             var expected =
@@ -109,19 +109,19 @@ namespace ObjectPrinting.Tests
             ans.Should().Be(expected);
         }
 
-        [Test]
-        public void GetPropertyByName_ShouldReturn_PropertyInfoByName()
-        {
-            var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
-            var printer = ObjectPrinter
-                .For<Person>()
-                .GetPropertyByName(x => x.Id);
-            var ans = printer.PropertyName;
-            
-            var expected = "Id";
-            
-            ans.Should().Be(expected);
-        }
+        // [Test]
+        // public void GetPropertyByName_ShouldReturn_PropertyInfoByName()
+        // {
+        //     var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
+        //     var printer = ObjectPrinter
+        //         .For<Person>()
+        //         .GetPropertyByName(x => x.Id);
+        //     var ans = printer.PropertyName;
+        //     
+        //     var expected = "Id";
+        //     
+        //     ans.Should().Be(expected);
+        // }
 
         [Test]
         public void SetSerializationStyle_ShouldSetUniqueSerializationStyle_ToGotProperty()
@@ -130,7 +130,7 @@ namespace ObjectPrinting.Tests
             var printer = ObjectPrinter
                 .For<Person>()
                 .GetPropertyByName(x => x.Name)
-                .SetSerializationStyle((obj, nestingLevel, deepnessLevel) => "My name" + Environment.NewLine);
+                .SetSerializationStyle((obj, nestingLevel, deepnessLevel, path) => "My name" + Environment.NewLine);
             var ans = printer.PrintToString(person);
             
             var baseGuid = Guid.Empty.ToString();
@@ -214,9 +214,43 @@ namespace ObjectPrinting.Tests
         }
 
         [Test]
+        public void SetSerializeStyle_ForFieldOrProperty_ShouldAffect_OnlyOnThisFieldOrProperty()
+        {
+            var person = new Person {Name = "Alex", Surname = "Smith", Height = 180.5, Age = 19};
+            var phone = new Phone {Name = "Phone"};
+            person.Phone = phone;
+            var printer = ObjectPrinter
+                .For<Person>()
+                .GetPropertyByName(x => x.Name)
+                .SetSerializationStyle((obj, nestingLevel, deepnessLevel, path) => "My name");
+            var ans = printer.PrintToString(person);
+            
+            var baseGuid = Guid.Empty.ToString();
+            var expected =
+                "Person\r\n\t" +
+                $"Id = {baseGuid}\r\n\t" +
+                "Name = My name\r\n\t" +
+                "Surname = Smith\r\n\t" +
+                "Height = 180,5\r\n\t" +
+                "Phone = Phone\r\n\t\t" +
+                $"Id = {baseGuid}\r\n\t\t" +
+                "Name = Phone\r\n\t" +
+                "Age = 19\r\n";
+            
+            ans.Should().Be(expected);
+        }
+
+        [Test]
         public void LoopReferencesTest()
         {
             var baseGuid = Guid.Empty.ToString();
+            var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
+            var phone = new Phone {Name = "My phone", Owner = person};
+            person.Phone = phone;
+            var printer = ObjectPrinter
+                .For<Person>();
+            var ans = printer.PrintToString(person);
+            
             var expected =
                 "Person\r\n\t" +
                 $"Id = {baseGuid}\r\n\t" +
@@ -234,12 +268,7 @@ namespace ObjectPrinting.Tests
                 "Phone = Deepness exceeded!\r\n\t\t\t" +
                 "Age = 19\r\n\t" +
                 "Age = 19\r\n";
-            var person = new Person {Name = "Alex", Surname = "Smith", Age = 19, Height = 180.5};
-            var phone = new Phone {Name = "My phone", Owner = person};
-            person.Phone = phone;
-            var printer = ObjectPrinter
-                .For<Person>();
-            var ans = printer.PrintToString(person);
+            
             ans.Should().Be(expected);
         }
 
@@ -249,7 +278,7 @@ namespace ObjectPrinting.Tests
             var array = new int[]{1, 2, 3};
             var printer = ObjectPrinter
                 .For<int[]>()
-                .WithTypeSerializationStyle<int>((obj, nestingLevel, deepnessLevel) =>
+                .WithTypeSerializationStyle<int>((obj, nestingLevel, deepnessLevel, path) =>
                     obj.GetType() + Environment.NewLine);
             var ans = printer.PrintToString(array);
 
@@ -287,13 +316,14 @@ namespace ObjectPrinting.Tests
                 {3, "three"}
             };
             var printer = ObjectPrinter
-                .For<Dictionary<int, string>>();
+                .For<Dictionary<int, string>>()
+                .WithTypeSerializationStyle<int>((obj, nestingLevel, deepnessLevel, path) => "number");
             var ans = printer.PrintToString(dict);
 
             var expected = new StringBuilder();
             expected.Append("Dictionary`2\r\n");
             foreach(var i in dict)
-                expected.Append("\t" + i.Key + " = " + i.Value + "\r\n");
+                expected.Append("\t" + "number" + " = " + i.Value + "\r\n");
             
             ans.Should().Be(expected.ToString());
         }

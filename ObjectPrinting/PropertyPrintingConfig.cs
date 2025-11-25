@@ -3,15 +3,24 @@ using System.Linq.Expressions;
 
 namespace ObjectPrinting;
 
-public class PropertyPrintingConfig<TOwner, TPropType>
+internal interface IPropertyPrintingConfigAccessor<TOwner, TPropType>
+{
+    PrintingConfig<TOwner> ParentConfig { get; }
+    Expression<Func<TOwner, TPropType>>? PropertySelector { get; }
+    PropertyPath PropertyPath { get; }
+}
+
+public class PropertyPrintingConfig<TOwner, TPropType> : IPropertyPrintingConfigAccessor<TOwner, TPropType>
 {
     private readonly PrintingConfig<TOwner> config;
     private readonly Expression<Func<TOwner, TPropType>>? selector;
+    private readonly PropertyPath propertyPath;
 
     public PropertyPrintingConfig(PrintingConfig<TOwner> config, Expression<Func<TOwner, TPropType>>? selector)
     {
         this.config = config;
         this.selector = ValidateExpression(selector);
+        this.propertyPath = PropertyPath.ConvertFromSelector(selector!); // Не null т.к. валидируем это
     }
 
     private Expression<Func<TOwner, TPropType>> ValidateExpression(Expression<Func<TOwner, TPropType>>? validatingSelector)
@@ -31,10 +40,11 @@ public class PropertyPrintingConfig<TOwner, TPropType>
             expression = member.Expression;
         return expression == parameter;
     }
+    
+    PrintingConfig<TOwner> IPropertyPrintingConfigAccessor<TOwner, TPropType>.ParentConfig => config;
 
-    
-    public PrintingConfig<TOwner> ParentConfig => config;
-    public Expression<Func<TOwner, TPropType>>? PropertySelector => selector;
-    
-    public string PropertyName => ((MemberExpression)selector!.Body).Member.Name;
+    Expression<Func<TOwner, TPropType>>? IPropertyPrintingConfigAccessor<TOwner, TPropType>.PropertySelector => selector;
+
+    PropertyPath IPropertyPrintingConfigAccessor<TOwner, TPropType>.PropertyPath =>
+        propertyPath;
 }
